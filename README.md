@@ -1,4 +1,4 @@
-# @Minteku
+# @Mi
 
 - ビジネス向けDevinの開発
 - Slack x Github x Claude Code Actionを連携
