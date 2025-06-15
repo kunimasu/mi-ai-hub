@@ -1,0 +1,105 @@
+name: MINTEKU Label Automation
+
+##########################################################
+# 「MINTEKU-<番号>」ラベルが付けられたときだけ実行
+##########################################################
+on:
+  pull_request:
+    types: [labeled]
+  issues:
+    types: [labeled]
+
+jobs:
+  minteku-automation:
+    if: contains(github.event.label.name, 'MINTEKU-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # 実行計画コミット
+      pull-requests: write     # PR 作成・更新
+      issues: write            # Issue コメント
+    env:
+      LABEL_NAME: ${{ github.event.label.name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Issue 番号を抽出
+        id: extract
+        run: |
+          ISSUE_NUM=$(echo "${LABEL_NAME}" | grep -oE '[0-9]+')
+          echo "issue_num=${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
+
+      - name: Issue 情報を取得し Markdown を生成
+        id: gather
+        run: |
+          ISSUE_NUM=${{ steps.extract.outputs.issue_num }}
+          FILE="MINTEKU-${ISSUE_NUM}.md"
+
+          gh issue view "$ISSUE_NUM" --json title,body,url > issue.json
+          gh issue comments "$ISSUE_NUM" --json body,author,url > comments.json
+
+          [ -f "$FILE" ] && cp "$FILE" "${FILE}.bak"
+
+          {
+            printf "# 実行計画 (Issue #%s)\n\n" "$ISSUE_NUM"
+            jq -r '.title' issue.json | sed 's/^/- **タイトル**: /'
+            printf "\n---\n\n"
+            jq -r '.body' issue.json
+            printf "\n\n---\n\n## コメント\n"
+            jq -r '.[] | "- " + .body' comments.json
+          } > "$FILE"
+
+      - name: コミット & プッシュ
+        run: |
+          ISSUE_NUM=${{ steps.extract.outputs.issue_num }}
+          FILE="MINTEKU-${ISSUE_NUM}.md"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if ! git diff --quiet -- "$FILE"; then
+            git add "$FILE"
+            git commit -m "docs: ✨ add/update execution plan for MINTEKU-${ISSUE_NUM}"
+            git push
+          fi
+
+      - name: ブランチ & PR を同期
+        run: |
+          ISSUE_NUM=${{ steps.extract.outputs.issue_num }}
+          BRANCH="MINTEKU-${ISSUE_NUM}"
+          PR_TITLE="MINTEKU-#${ISSUE_NUM}"
+
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git checkout -b "$BRANCH"
+            git commit --allow-empty -m "chore: 🤖 init branch for ${BRANCH}"
+            git push -u origin "$BRANCH"
+          fi
+
+          PR=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+
+          if [ -z "$PR" ]; then
+            gh pr create \
+              --title "$PR_TITLE" \
+              --body "Auto-generated pull request for **Issue #${ISSUE_NUM}**." \
+              --head "$BRANCH" \
+              --base ${{ github.event.repository.default_branch }}
+          else
+            gh pr edit "$PR" --title "$PR_TITLE"
+            gh pr edit "$PR" --add-label "$LABEL_NAME"
+            gh pr comment "$PR" --body "Linked to Issue #${ISSUE_NUM}."
+          fi
+
+      - name: Issue ↔ PR 相互リンク
+        run: |
+          ISSUE_NUM=${{ steps.extract.outputs.issue_num }}
+          BRANCH="MINTEKU-${ISSUE_NUM}"
+          PR=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+
+          if [ -n "$PR" ]; then
+            gh issue comment "$ISSUE_NUM" --body "Pull request linked: #${PR}"
+            gh pr edit "$PR" --body "$(gh pr view "$PR" --json body -q .body | sed '/^Linked Issue:/d')\n\nLinked Issue: #${ISSUE_NUM}"
+          fi
