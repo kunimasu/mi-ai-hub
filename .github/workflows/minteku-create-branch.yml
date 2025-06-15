@@ -12,12 +12,9 @@ jobs:
       issues:   write
 
     steps:
-      # ubuntu-latest イメージには gh がプリインストール済み
-      # 必要なら下記のように明示的にセットアップ
-      # - uses: cli/cli@v2
-
-      - name: Create MINTEKU branch via gh
+      - name: Create MINTEKU branch
         env:
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUM:  ${{ github.event.issue.number }}
           REPO:       ${{ github.repository }}
           DEFAULT_BR: ${{ github.event.repository.default_branch }}
