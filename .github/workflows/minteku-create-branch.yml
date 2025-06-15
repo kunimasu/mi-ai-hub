@@ -1,4 +1,4 @@
-name: Create MINTEKU Branch
+name: Create MINTEKU Branch (gh only)
 
 on:
   issues:
@@ -9,33 +9,35 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      issues:   write
 
-      - name: Create MINTEKU branch
-        run: |
-          ISSUE_NUM=${{ github.event.issue.number }}
-          BRANCH_NAME="MINTEKU-${ISSUE_NUM}"
-          
-          echo "Creating branch: $BRANCH_NAME"
-          
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if branch already exists
-          if git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null; then
-            echo "Branch $BRANCH_NAME already exists"
-          else
-            # Create and push new branch
-            git checkout -b "$BRANCH_NAME"
-            git commit --allow-empty -m "chore: initialize branch for issue #${ISSUE_NUM}"
-            git push -u origin "$BRANCH_NAME"
-            echo "Created branch: $BRANCH_NAME"
-          fi
+    steps:
+      # ubuntu-latest イメージには gh がプリインストール済み
+      # 必要なら下記のように明示的にセットアップ
+      # - uses: cli/cli@v2
+
+      - name: Create MINTEKU branch via gh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM:  ${{ github.event.issue.number }}
+          REPO:       ${{ github.repository }}
+          DEFAULT_BR: ${{ github.event.repository.default_branch }}
+        run: |
+          BRANCH_NAME="MINTEKU-${ISSUE_NUM}"
+          echo "Target branch: ${BRANCH_NAME}"
+
+          # 1. 既にブランチがあるか API で確認
+          if gh api --silent repos/${REPO}/branches/${BRANCH_NAME} >/dev/null 2>&1; then
+            echo "Branch ${BRANCH_NAME} already exists – skip"
+            exit 0
+          fi
+
+          # 2. デフォルトブランチ HEAD のコミット SHA を取得
+          BASE_SHA=$(gh api repos/${REPO}/git/ref/heads/${DEFAULT_BR} --jq '.object.sha')
+          echo "Base SHA: ${BASE_SHA}"
+
+          # 3. refs エンドポイントで新規ブランチを作成
+          gh api -X POST repos/${REPO}/git/refs \
+            -f ref="refs/heads/${BRANCH_NAME}" \
+            -f sha="${BASE_SHA}"
+
+          echo "Created remote branch: ${BRANCH_NAME}"
