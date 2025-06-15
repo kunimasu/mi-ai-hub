@@ -1,0 +1,41 @@
+name: Create MINTEKU Branch
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create MINTEKU branch
+        run: |
+          ISSUE_NUM=${{ github.event.issue.number }}
+          BRANCH_NAME="MINTEKU-${ISSUE_NUM}"
+          
+          echo "Creating branch: $BRANCH_NAME"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if branch already exists
+          if git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null; then
+            echo "Branch $BRANCH_NAME already exists"
+          else
+            # Create and push new branch
+            git checkout -b "$BRANCH_NAME"
+            git commit --allow-empty -m "chore: initialize branch for issue #${ISSUE_NUM}"
+            git push -u origin "$BRANCH_NAME"
+            echo "Created branch: $BRANCH_NAME"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
