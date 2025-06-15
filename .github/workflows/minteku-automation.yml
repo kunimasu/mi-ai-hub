@@ -39,18 +39,20 @@ jobs:
           ISSUE_NUM=${{ steps.extract.outputs.issue_num }}
           FILE="MINTEKU-${ISSUE_NUM}.md"
 
-          gh issue view "$ISSUE_NUM" --json title,body,url > issue.json
-          gh issue comments "$ISSUE_NUM" --json body,author,url > comments.json
+          ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title -q .title)
+          ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --json body -q .body)
+          ISSUE_URL=$(gh issue view "$ISSUE_NUM" --json url -q .url)
 
           [ -f "$FILE" ] && cp "$FILE" "${FILE}.bak"
 
           {
             printf "# 実行計画 (Issue #%s)\n\n" "$ISSUE_NUM"
-            jq -r '.title' issue.json | sed 's/^/- **タイトル**: /'
+            printf "- **タイトル**: %s\n" "$ISSUE_TITLE"
+            printf "- **URL**: %s\n" "$ISSUE_URL"
             printf "\n---\n\n"
-            jq -r '.body' issue.json
+            printf "%s\n" "$ISSUE_BODY"
             printf "\n\n---\n\n## コメント\n"
-            jq -r '.[] | "- " + .body' comments.json
+            gh issue comments "$ISSUE_NUM" --json body -q '.[] | "- " + .body'
           } > "$FILE"
 
       - name: コミット & プッシュ
@@ -101,5 +103,8 @@ jobs:
 
           if [ -n "$PR" ]; then
             gh issue comment "$ISSUE_NUM" --body "Pull request linked: #${PR}"
-            gh pr edit "$PR" --body "$(gh pr view "$PR" --json body -q .body | sed '/^Linked Issue:/d')\n\nLinked Issue: #${ISSUE_NUM}"
+            CURRENT_BODY=$(gh pr view "$PR" --json body -q .body | sed '/^Linked Issue:/d')
+            gh pr edit "$PR" --body "${CURRENT_BODY}
+
+Linked Issue: #${ISSUE_NUM}"
           fi
