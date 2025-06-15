@@ -106,5 +106,5 @@ jobs:
             CURRENT_BODY=$(gh pr view "$PR" --json body -q .body | sed '/^Linked Issue:/d')
             gh pr edit "$PR" --body "${CURRENT_BODY}
 
-Linked Issue: #${ISSUE_NUM}"
+            Linked Issue: #${ISSUE_NUM}"
           fi
